@@ -30,6 +30,7 @@
 (defvar *project-projects* '())
 (defvar *project-website-map* '())
 
+
 (defmacro defproject (project-name &rest args)
   "Macro for project declaration.
 
@@ -53,17 +54,16 @@
        (workspace--add-workspace-no-prompt
 	ws-num (format "{} %s" ,(symbol-name project-name)))
        ,(when project-dir
-	  `(progn
-	     (dired ,project-dir)))
+	    `(dired ,project-dir))
        ,(when conda-env
 	  `(progn
 	     (conda-env-deactivate)
 	     (conda-env-activate ,conda-env)))
        ,(when website
-	  (push '`(,(format "%s" project-name) . ,website)
+	  (push `(,(format "%s" project-name) . ,website)
 		*project-website-map*)
 	  nil)
-       ,(when init
+   ,(when init
 	  `(progn
 	     ,init)))))
 
@@ -100,8 +100,6 @@
 	 (url      (alist-get
 		    to-visit *project-website-map* nil nil #'equal)))
     (browse-url url)))
-
-
 
 (provide 'eirene-project)
 ;;; project.el ends here

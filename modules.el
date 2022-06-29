@@ -65,8 +65,14 @@
 
 (module! dired
   :use-package nil
+  (setq dired-dwim-target t)
+  (when (string= system-type "darwin")
+    (setq dired-use-ls-dired nil)))
+
+(module! pbcopy
+  :ensure t
   :init
-  (setq dired-dwim-target t))
+  (turn-on-pbcopy))
 
                       ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;
@@ -80,26 +86,10 @@
   (setq
    ibuffer-saved-filter-groups
    '(("default"
-      ("python"
-       (or (mode . python-mode)
-	   (directory . "/Users/andrewparisi/Documents/python")
-	   (name . "\*Python\*")))
-      ("clojure"
-       (or (mode . clojure-mode)
-	   (directory . "/Users/andrewparisi/Documents/clojure")
-	   (name . "\*cider\*")))
-      ("R"
-       (or (mode . ess-r-mode)))
-      ("magit"
-       (name . "*magit*"))
       ("help"
        (or (name . "\*Help\*")
 	   (name . "\*Apropos\*")
 	   (name . "\*info\*")))
-      ("organizer"
-       (or (mode . org-mode)
-	   (name . "*Org Agenda*")
-	   (name . "*Todays Task Log*")))
       ("emacs"
        (or (mode . emacs-lisp-mode)))
       ("filesystem"
@@ -124,21 +114,7 @@
    #'ediff-setup-windows-plain)
 
   (defun git-commit-message-setup ()
-    (insert (format "%s \n" (magit-get-current-branch)))
-    (insert
-     "# Ensure these items have been done before committing code: \n")
-    (insert
-     (concat "# [ ] Tests have been written to record the before "
-	     "and after behavior \n"))
-    (insert
-     "# [ ] The README has been updated according to the changes \n")
-    (insert
-     (concat "# [ ] Any benchmarks/other things that need to be"
-	     " recorded or updated \n")))
-
-
-  (defun pr-checklist ()
-    '(tests readme))
+    (insert (format "%s \n" (magit-get-current-branch))))
 
   (add-hook 'git-commit-setup-hook 'git-commit-message-setup)
 
@@ -148,7 +124,6 @@
 
 (module! git-timemachine
   :ensure t
-  :defer t
   :defer t)
 
 (module! code-review
@@ -165,6 +140,7 @@
      "c" 'code-review-comment-add-or-edit)))
 
 (module! eshell
+  :use-package nil
   :init
   (load! "~/.emacs.d/eshell.el")
   (evil-define-key 'normal 'eshell-mode-map
@@ -183,19 +159,17 @@
   :defer t
   :ensure t)
 
-                       ;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;
+(module! quelpa
+  :defer t
+  :ensure t)
 
 ;; TODO: Figure out a way
 ;; to make module just a wrapper
-;; and not use use-pacage.
+;; and not use use-package.
 
 (module! recentf-mode
   :use-package nil
   (recentf-mode))
-
-(module! quelpa
-  :ensure t)
 
 (module! projectile
   :ensure t

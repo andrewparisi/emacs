@@ -1,6 +1,7 @@
 (defvar *eshell-prompt-icon* "⚓")
 
-(defvar *last-command-time* nil)
+(make-variable-buffer-local
+ (defvar *last-command-time* nil))
 
 (defun eshell/send-input ()
   (interactive)
@@ -89,7 +90,6 @@
 			   (truncate (* (- total-time minutes)
 				60))))))
 	   (eshell/prompt-section "ⓖ" (git-prompt-status))
-	   (eshell/prompt-section "ⓒ" conda-env-current-name)
 	   (eshell/prompt-end)))))
 
 (setq eshell-prompt-regexp (format "^[^%s]+ %s " *eshell-prompt-icon* *eshell-prompt-icon*))
