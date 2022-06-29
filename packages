@@ -19,6 +19,7 @@ flycheck
 lsp-ui
 lsp-mode
 org-roam
+org-timeline
 org-agenda
 org
 envrc
@@ -26,7 +27,7 @@ projectile
 quelpa
 ag
 eshell
-github-review
+code-review
 git-timemachine
 magit
 ibuffer

@@ -59,6 +59,10 @@
     (push
      `("M-x" . ,(substitute-command-keys "\\[counsel-M-x]"))
      bindings)
+    (push
+     `("Switch Project" . ,(substitute-command-keys
+			    "\\[project-switch-project]"))
+     bindings)
     (insert "Key Bindings: \n\n")
     (insert "| key | binding |\n")
     (insert "|-----+---------|\n")

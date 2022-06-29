@@ -2,6 +2,7 @@
 
 (add-to-list 'exec-path "/usr/local/bin")
 (add-to-list 'exec-path "/Library/TeX/texbin/")
+(add-to-list 'load-path "~/.emacs.d/lisp")
 (setenv "PATH" (mapconcat 'identity exec-path ":"))
 
 ;; TODO: Create module! macro that is a thin wrapper around use-package
@@ -150,12 +151,18 @@
   :defer t
   :defer t)
 
-(module! github-review
-  :defer t
+(module! code-review
   :ensure t
+  :defer t
   :init
-  (setq github-review-view-comments-in-code-lines t
-	github-review-reply-inline-comments t))
+  (setq code-review-fill-column 80
+	code-review-new-buffer-window-strategy #'switch-to-buffer
+	code-review-download-dir "/tmp/code-review/")
+  :config
+  (major-mode-map code-review-mode
+    :bindings
+    ("m"  'code-review-transient-api
+     "c" 'code-review-comment-add-or-edit)))
 
 (module! eshell
   :init
@@ -169,8 +176,8 @@
     (kbd "C-k") 'eshell-previous-matching-input-from-input
     (kbd "RET") 'eshell/send-input)
   (major-mode-map eshell-mode
-    (:bindings
-     "c" 'eshell/clear)))
+    :bindings
+    ("c" 'eshell/clear)))
 
 (module! ag
   :defer t
@@ -442,6 +449,12 @@
    calendar-latitude 42.2
    calendar-longitude -71.0
    calendar-location-name "Quincy, MA"))
+
+(module! org-timeline
+  :ensure t
+  :after org
+  :init
+  (add-hook 'org-agenda-finalize-hook 'org-timeline-insert-timeline :append))
 
 (module! org-roam
   :ensure t
@@ -984,7 +997,9 @@
 
 (module! restclient
   :ensure t
-  :defer t)
+  :defer t
+  :init
+  (add-to-list 'auto-mode-alist '("\\.http\\'" . restclient-mode)))
 
 
            ;;;

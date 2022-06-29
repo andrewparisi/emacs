@@ -1,7 +1,7 @@
 ;; -*- mode: emacs-lisp -*-
 
 (setq *start* (float-time))
-
+(setq x-select-enable-clipboard t)
 ;; TODO: Find a better place for this maybe we need a general settings
 ;; section
 (add-hook 'write-file-functions 'delete-trailing-whitespace)
@@ -175,7 +175,6 @@
 (which-key-map evil-normal-state-map ","
   :labels
   ( "g"  "git"
-    "gr" "github review"
     "i"  "init"
     "n"  "notes"
     "o"  "organizer"
@@ -194,7 +193,7 @@
   :default-bindings
   (;; ibuffer
    "bi" 'ibuffer
-   "bb" 'ivy-switch-buffer
+   "bb" 'workspace-switch-buffer
    "bm" 'messages-buffer
    "bs" 'scratch-buffer
    "bw" 'save-buffer
@@ -205,9 +204,7 @@
    "gc"  'magit-branch-checkout
    "gb"  'magit-blame
    "gl"  'magit-log-current
-   "grs" 'github-review-start
-   "grc" 'github-review-comment
-   "gra" 'github-review-approve
+   "gr" 'code-review-start
    "gh"  'git-timemachine
    ;; init
    "ii"  'init-file
@@ -276,7 +273,13 @@
 (defproject avicenna
   :project-dir "~/Documents/projects/avicenna"
   :website
-  "https://github.com/reifyhealth/concept-data/tree/develop/avicenna")
+  "https://github.com/reifyhealth/concept-data/tree/develop/avicenna"
+  :init (my-cider-connect))
+
+(defproject ri-match
+  :project-dir "~/Documents/projects/concept-data/ri-match"
+  :website "https://github.com/reifyhealth/concept-data/tree/develop/ri-match"
+  :init (my-cider-connect))
 
 (defproject data-drawings
   :project-dir "~/Documents/projects/data-diagrams"
@@ -295,7 +298,11 @@
 (defproject pyreify
   :project-dir "~/scratch/project-scratch/concept-data"
   :website   "https://github.com/reifyhealth/concept-data/"
-  :conda-env "pyreify_nlp")
+  :conda-env "pyreify")
+
+(defproject retool
+  :project-dir "~/Documents/projects/retool-admin"
+  :website   "https://github.com/reifyhealth/retool-admin/")
 
 (defproject sql
    :init (sql-session-start-session))
@@ -306,6 +313,11 @@
   "https://github.com/reifyhealth/prefect-enrollment-prediction"
   :conda-env   "prefect-zem")
 
+(defproject knowledge-base
+  :project-dir "~/Documents/projects/data-daze-spring-2022/knowledge-base"
+  :website "http://github.com/reifyhealth/data-date-spring-2022"
+  :init (my-cider-connect))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Scratch and Miscellany
 
@@ -313,15 +325,6 @@
 ;; Clean this up and put it in a macro
 (evil-define-key 'normal 'evil-normal-state-map "'" 'evil-jump-item)
 (evil-define-key 'visual 'evil-visual-state-map "'" 'evil-jump-item)
-
-;; If you want to change parens
-;;(progn (define-key key-translation-map (kbd "[") (kbd "("))
-;;	      (define-key key-translation-map (kbd "(") (kbd "["))
-;;	      (define-key key-translation-map (kbd ")") (kbd "]"))
-;;	      (define-key key-translation-map (kbd "]") (kbd ")")))
-
-
-
 
 (evil-define-key 'normal 'evil-normal-state-map (kbd "C-k") 'comint-previous-input)
 (evil-define-key 'insert 'evil-insert-state-map (kbd "C-k") 'comint-previous-input)
@@ -338,13 +341,19 @@
 
 (setq *end* (float-time))
 (eirene-splash (- *end* *start*))
+
+;; Custom startup for work
+(organizer-session)
+(add-hook 'buffer-list-update-hook 'workspace-new-buffer)
+
+
 (custom-set-variables
  ;; custom-set-variables was added by Custom.
  ;; If you edit it by hand, you could mess it up, so be careful.
  ;; Your init file should contain only one such instance.
  ;; If there is more than one, they won't work right.
  '(package-selected-packages
-   '(yaml-mode which-key use-package undo-tree ttl-mode sqlformat sphinx-doc sparql-mode quelpa projectile ox-ipynb magit lsp-ui ivy-rich haskell-mode github-review git-timemachine flycheck evil-collection ess envrc csv-mode counsel conda company cider blacken ag)))
+   '(org-timeline yaml-mode which-key use-package undo-tree ttl-mode sqlformat sphinx-doc sparql-mode restclient quelpa projectile org-roam magit lsp-ui ivy-rich haskell-mode git-timemachine flycheck evil-collection ess envrc csv-mode counsel conda company cider blacken ag)))
 (custom-set-faces
  ;; custom-set-faces was added by Custom.
  ;; If you edit it by hand, you could mess it up, so be careful.
