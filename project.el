@@ -27,9 +27,18 @@
 ;;; Code:
 
 ;;(require 'workspace)
+
 (defvar *project-projects* '())
 (defvar *project-website-map* '())
+(defvar *project-directories* '())
+(defvar *project-quit-function* ())
 
+
+(defun alist-update (alist key update-function &rest args)
+  (let* ((old-value (alist-get key alist nil t #'equal))
+	 (new-alist (assoc-delete-all key alist #'equal))
+	 (new-value (apply update-function old-value args)))
+    (cons (cons key new-value) new-alist)))
 
 (defmacro defproject (project-name &rest args)
   "Macro for project declaration.
@@ -43,46 +52,61 @@
   (let* ((project-dir  (plist-get args :project-dir))
 	 (conda-env    (plist-get args :conda-env))
 	 (init         (plist-get args :init))
+	 (stop         (plist-get args :stop))
 	 (website      (plist-get args :website))
-	 (function-name (intern (->> project-name
-				     (format "%s-session")))))
-    (push `(,(symbol-name project-name) . ,function-name)
+	 (start-function-name (intern (->> project-name
+					   (format "%s-session"))))
+	 (dir-function-name   (intern (->> project-name
+					   (format "%s-session-dired")))))
+    (push `(,(symbol-name project-name) . ,start-function-name)
 	  *project-projects*)
-    `(defun ,function-name (ws-num)
-       (interactive "nWorkspace Number: ")
-       (delete-other-windows)
-       (workspace--add-workspace-no-prompt
-	ws-num (format "{} %s" ,(symbol-name project-name)))
-       ,(when project-dir
+    (when stop
+      (push (cons (format "%s" project-name) `,stop)
+    	    *project-quit-function*))
+    `(progn
+       (defun ,start-function-name (ws-num)
+	 (interactive "nWorkspace Number: ")
+	 (delete-other-windows)
+	 (workspace-to-workspace-number-with-name
+	  ws-num (format "{} %s" ,(symbol-name project-name)))
+	 ,(when project-dir
+	    (setq *project-directories*
+		  (alist-update *project-directories*
+				(format "%s" project-name)
+				(lambda (value)
+				  (identity value))))
 	    `(dired ,project-dir))
-       ,(when conda-env
-	  `(progn
-	     (conda-env-deactivate)
-	     (conda-env-activate ,conda-env)))
-       ,(when website
-	  (push `(,(format "%s" project-name) . ,website)
-		*project-website-map*)
-	  nil)
-   ,(when init
-	  `(progn
-	     ,init)))))
+	 ,(when conda-env
+	    `(progn
+	       (pyvenv-deactivate)
+	       (pyvenv-workon ,conda-env)))
+	 ,(when website
+	    (push `(,(format "%s" project-name) . ,website)
+		  *project-website-map*)
+	    nil)
+	 ,(when init
+	    `(progn
+	       ,init))
+	 (worskpace-save-current-view))
+
+       (defun ,dir-function-name ()
+	 (interactive)
+	 (dired ,project-dir)))))
 
 (defun project--all-projects ()
   "Gather all project names."
   (mapcar #'car *project-projects*))
+
 
 (defun project-switch-project ()
   "Allow user to switch to a project.
 
    User specifies the PROJECT, the highest workspace available is used."
   (interactive)
-  (let* ((workspace-numbers (workspace-list-workspace-keys))
-	 (workspace-number (if workspace-numbers
-			       (inc (apply #'max workspace-numbers))
-			     1))
-	 (project-name (ivy-read "Project: " (project--all-projects)))
-	 (project-function
-	  (alist-get project-name *project-projects* nil nil #'equal)))
+  (let* ((workspace-number (workspace-get-next-workspace-number))
+	 (project-name     (ivy-read "Project: " (project--all-projects)))
+	 (project-function (alist-get
+			    project-name *project-projects* nil nil #'equal)))
     (funcall project-function workspace-number)))
 
 (defun project-browse-website ()
@@ -100,6 +124,26 @@
 	 (url      (alist-get
 		    to-visit *project-website-map* nil nil #'equal)))
     (browse-url url)))
+
+(defun project--name-from-workspace (ws)
+  (-> ws (split-string ":") cdr car (substring 1)))
+
+(defun project-quit-project ()
+  "Select a project to remove the workspace and all buffers for."
+  (interactive)
+  (let ((all-projects      (project--all-projects))
+	(active-workspaces (workspace-list))
+	(active-projects   '()))
+    (dolist (workspace active-workspaces)
+      (let  ((workspace-name (project--name-from-workspace workspace)))
+	(when (member workspace-name all-projects)
+	  (push workspace active-projects))))
+    (let* ((to-quit (ivy-read "Project: " (reverse active-projects)))
+	   (stop (alist-get
+		  (project--name-from-workspace to-quit)
+       		  *project-quit-function* nil nil #'equal)))
+      (eval stop)
+      (workspace-remove-workspace to-quit))))
 
 (provide 'eirene-project)
 ;;; project.el ends here

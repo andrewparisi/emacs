@@ -1,9 +1,8 @@
 (load! "~/.emacs.d/keyboard.el")
 
-(add-to-list 'exec-path "/usr/local/bin")
-(add-to-list 'exec-path "/Library/TeX/texbin/")
+;; (add-to-list 'exec-path "/Library/TeX/texbin/")
 (add-to-list 'load-path "~/.emacs.d/lisp")
-(setenv "PATH" (mapconcat 'identity exec-path ":"))
+(add-to-list 'exec-path "/usr/local/bin")
 
 ;; TODO: Create module! macro that is a thin wrapper around use-package
 ;; but that makes defining major mode and default bindings for a mode easy
@@ -20,6 +19,7 @@
   :diminish
   :config
   (global-undo-tree-mode)
+  (setq undo-tree-history-directory-alist '(("." . "~/.emacs.d/undo")))
   (evil-set-undo-system 'undo-tree))
 
 (module! counsel
@@ -63,12 +63,6 @@
   (evil-collection-init)
   (setq evil-collection-magit-use-z-for-folds t))
 
-(module! dired
-  :use-package nil
-  (setq dired-dwim-target t)
-  (when (string= system-type "darwin")
-    (setq dired-use-ls-dired nil)))
-
 (module! pbcopy
   :ensure t
   :init
@@ -86,10 +80,27 @@
   (setq
    ibuffer-saved-filter-groups
    '(("default"
+      ("python"
+       (or (mode . python-mode)
+	   (directory . "/Users/andrewparisi/Documents/python")
+	   (name . "\*Python\*")))
+      ("clojure"
+       (or (mode . clojure-mode)
+	   (directory . "/Users/andrewparisi/Documents/clojure")
+	   (name . "\*cider\*")))
+      ("magit"
+       (name . "*magit*"))
       ("help"
        (or (name . "\*Help\*")
 	   (name . "\*Apropos\*")
 	   (name . "\*info\*")))
+      ("keep"
+       (or (name . "*Org Agenda*")
+	   (name . "*Todays Task Log*")
+	   (name . "status.org")
+	   (name . "*scratch*")
+	   (name . "*Messages*")
+	   (name . "*Eirene Splash*")))
       ("emacs"
        (or (mode . emacs-lisp-mode)))
       ("filesystem"
@@ -103,6 +114,24 @@
 	       (ibuffer-switch-to-saved-filter-groups
 		"default"))))
 
+(module! dired
+  :use-package nil
+
+  (defun dired-goto-and-find ()
+    (interactive)
+    (isearch-forward)
+    (dired-find-alternate-file))
+
+  (setq dired-dwim-target t)
+  (when (string= system-type "darwin")
+    (setq dired-use-ls-dired nil))
+
+  (evil-define-key
+    'normal dired-mode-map
+    "l" 'dired-find-alternate-file
+    "h" 'dired-up-directory
+    "f" 'dired-goto-and-find))
+
 (module! magit
   :ensure t
   :defer t
@@ -114,7 +143,7 @@
    #'ediff-setup-windows-plain)
 
   (defun git-commit-message-setup ()
-    (insert (format "%s \n" (magit-get-current-branch))))
+    (insert (format "[%s] " (magit-get-current-branch))))
 
   (add-hook 'git-commit-setup-hook 'git-commit-message-setup)
 
@@ -126,23 +155,32 @@
   :ensure t
   :defer t)
 
+(module! forge
+  :ensure t
+  :after magit
+  :init
+  (setq forge-add-default-bindings nil))
+
 (module! code-review
   :ensure t
   :defer t
   :init
+  (setq ghub-use-workaround-for-emacs-bug 'force)
+  :config
   (setq code-review-fill-column 80
 	code-review-new-buffer-window-strategy #'switch-to-buffer
 	code-review-download-dir "/tmp/code-review/")
-  :config
   (major-mode-map code-review-mode
     :bindings
     ("m"  'code-review-transient-api
-     "c" 'code-review-comment-add-or-edit)))
+     "c" 'code-review-comment-add-or-edit))
+  )
 
 (module! eshell
   :use-package nil
   :init
   (load! "~/.emacs.d/eshell.el")
+  ;; These don't really work, do they?
   (evil-define-key 'normal 'eshell-mode-map
     (kbd "C-j") 'eshell-next-matching-input-from-input
     (kbd "C-k") 'eshell-previous-matching-input-from-input
@@ -153,7 +191,14 @@
     (kbd "RET") 'eshell/send-input)
   (major-mode-map eshell-mode
     :bindings
-    ("c" 'eshell/clear)))
+    ("c" 'eshell/clear))
+  (defun scts (input)
+    (shell-command-to-string input))
+  )
+
+(module! vterm
+  :ensure t
+  :defer t)
 
 (module! ag
   :defer t
@@ -163,6 +208,13 @@
   :defer t
   :ensure t)
 
+(module! exec-path-from-shell
+  :ensure t
+  :init
+  (when (memq window-system '(mac ns x))
+    (exec-path-from-shell-initialize)))
+
+
 ;; TODO: Figure out a way
 ;; to make module just a wrapper
 ;; and not use use-package.
@@ -170,15 +222,6 @@
 (module! recentf-mode
   :use-package nil
   (recentf-mode))
-
-(module! projectile
-  :ensure t
-  :init
-  (projectile-mode +1)
-  :config
-  (setq projectile-completion-system 'ivy
-        projectile-switch-project-action 'projectile-dired
-	projectile-sort-order 'recentf))
 
 (module! envrc
   :ensure t
@@ -192,6 +235,37 @@
   (setq *project* "DPS")
   :config
 
+  ;; For wrapping tables in src blocks
+  (defmacro org--table-enter-or-exit (exit?)
+    `(let ((at-table? ,exit?))
+       (while ,(if exit?
+		   'at-table?
+		 '(not at-table?))
+	 (forward-line)
+	 (when (or ,(if exit?
+			'(not (org-at-table-p))
+		      '(org-at-table-p))
+		   ;; (end-of-buffer-p)
+		   )
+	   (setq at-table? ,(not exit?))))))
+
+  (defun org-to-next-table ()
+    (interactive)
+    (org--table-enter-or-exit nil))
+
+  (defun org-exit-current-table ()
+    (interactive)
+    (org--table-enter-or-exit t))
+
+  (defun execute-fn-on-lines (start end buffer fn &rest args)
+    (save-window-excursion
+      (switch-to-buffer buffer)
+      (goto-line start)
+      (apply fn args)
+      (dotimes (n (- end start))
+	(goto-line (inc (+ start n)))
+	(apply fn args))))
+
   (defun org-generate-pr-url (number)
     (interactive "sPR Number: ")
     (let* ((project-map '(("ZEM" . "prefect-enrollment-prediction")))
@@ -204,19 +278,31 @@
 		 number)))
       (insert url)))
 
-  (defun org-insert-jira-link ()
-    (interactive)
-    (let ((project nil)
-	  (number  nil))
-      (if *project*
-	  (setq project *project*)
-	(setq project
-	      (read-from-minibuffer "Project: ")))
-      (setq number (read-from-minibuffer "Number: "))
-      (insert (format
-               "[[https://reifyhealth.atlassian.net/browse/%s-%s][%s-%s]]"
-               project number project number)) ))
+  (defun org-insert-link-internal (project number)
+    (cond ((and *project* (not project))
+	   (setq project *project*))
+	  ((not project)
+	   (setq project
+		 (read-from-minibuffer "Project: "))))
+    (unless number
+      (setq number (read-from-minibuffer "Number: ")))
+    (let* ((ticket-number (format "%s-%s" project number))
+	   (link-text (format
+		       "https://reifyhealth.atlassian.net/browse/%s"
+		       ticket-number)))
+      (cl-values link-text ticket-number)))
 
+  (defun org-insert-markdown-jira-link (&optional project number)
+    (interactive)
+    (cl-multiple-value-bind (link-text ticket-number)
+	(org-insert-link-internal project number)
+      (insert (format "[%s](%s)" ticket-number link-text))))
+
+  (defun org-insert-org-jira-link (&optional project number)
+    (interactive)
+    (cl-multiple-value-bind (link-text ticket-number)
+	(org-insert-link-internal project number)
+      (insert (format "[[%s][%s]]" link-text ticket-number))))
 
   (defun org-archive-finished-tasks ()
     (interactive)
@@ -276,6 +362,10 @@
     (interactive)
     (goto-char (org-goto-heading "JIRA" '("Tasks"))))
 
+  (defun org-task-goto-kb ()
+    (interactive)
+    (goto-char (org-goto-heading "Knowledge Base" '("Tasks"))))
+
   (defun org-task-goto-avicenna ()
     (interactive)
     (->> '("Tasks" "JIRA")
@@ -288,7 +378,7 @@
 	 (org-goto-heading "Zero Enroller Model")
 	 goto-char))
 
-  (defun org-jira-link-todo ()
+  (defun org-jira-link-todo (&optional project number)
     (interactive)
     (save-excursion
       (end-of-line)
@@ -301,11 +391,11 @@
                  (re-search-forward " ")
                  (insert " "))
                 ((string-match
-		  (regexp-quote "IN PROGRESS") todo-string 0)
+		  (regexp-quote "WORKING") todo-string 0)
                  (re-search-forward " " nil nil 2)
                  (insert " ")))
           (backward-char)
-          (org-insert-jira-link)
+          (org-insert-org-jira-link project number)
 	  (insert ":")))))
 
   (defun org-meeting-insert-speaker (speaker)
@@ -313,13 +403,45 @@
     (let ((time (format-time-string "%H:%M")))
       (insert (format "** %s %s\n\n" speaker time))))
 
+  (defun org-insert-time-stamped-row ()
+    (interactive)
+    (let ((time (format-time-string "%H:%M")))
+      (insert (format "- %s: " time))))
+
+  (defun org-summary-todo (n-done n-not-done)
+    "Switch entry to DONE when all subentries are done, to TODO otherwise."
+    (let (org-log-done org-log-states)	; turn off logging
+      (org-todo (if (= n-not-done 0) "DONE" "TODO"))))
+
+  (add-hook 'org-after-todo-statistics-hook #'org-summary-todo)
+  (add-hook 'electric-indent-functions
+	    (lambda (x) (when (eq 'org-mode major-mode) 'no-indent)))
+
+
+
+  (make-variable-buffer-local
+   (defvar
+     *footnote-count* 1))
+
+  (defun org-add-footnote (text)
+    (interactive "sText: ")
+    (save-excursion
+      (insert (format "[fn:%s]" *footnote-count*))
+      (goto-char (point-max))
+      (when (equal *footnote-count* 1)
+	  (insert "* Footnotes\n"))
+      (insert "\n")
+      (insert (format "[fn:%s]: %s" *footnote-count* text))
+      (setq *footnote-count* (inc *footnote-count*))))
+
   (major-mode-map org-mode
     :bindings
     ("a"   'org-agenda
-     "tt"  'org-todo
-     "ts"  'org-schedule
+     "n"  'org-todo
      "te"  'org-set-effort
      "tp"  'org-priority
+     "ts"  'org-schedule
+     "tt"  'org-set-tags-command
      "ct"  'org-archive-finished-tasks
      "cs"  'org-archive-subtree
      "jo"  'org-open-at-point
@@ -327,7 +449,10 @@
      "fmi" 'setup-meetings-file
      "fms" 'org-meeting-insert-speaker
      "ic"  'org-insert-code-block
-     "ij"  'org-insert-jira-link
+     "ij"  'org-insert-org-jira-link
+     "ii"  'org-insert-time-stamped-row
+     "if"  'org-add-footnote
+     "im"  'org-insert-markdown-jira-link
      "it"  'org-jira-link-todo
      "e"   'org-export-dispatch
      "p"   'org-generate-pr-url
@@ -347,8 +472,10 @@
      "fm" "meeting-file"
      "f"  "file"
      "t"  "task"))
+
   (evil-define-key 'normal org-mode-map
     (kbd "<tab>") 'org-cycle)
+
   (require 'ox-md)
   (require 'ox-ipynb)
   (setq org-startup-indented t
@@ -358,7 +485,7 @@
   	org-log-done t
 	org-enforce-todo-dependencies t
   	org-todo-keywords
-  	'((sequence "TODO" "IN PROGRESS" "|" "DONE" "WONT DO(@)"))
+  	'((sequence "TODO" "WORKING" "|" "DONE" "WONT DO(@)"))
   	org-hide-leading-stars t
   	org-confirm-babel-evaluate nil
   	org-agenda-files (list "~/org/status.org")
@@ -370,6 +497,9 @@
 	  ("j" "jira" entry
   	   (file+function "~/org/status.org" org-task-goto-jira)
 	   "*** TODO [[https://reifyhealth.atlassian.net/browse/%^{Project}][%\\1]]: %?\nSCHEDULED: %^t")
+	  ("k" "knowledge base" entry
+	   (file+function "~/org/status.org" org-task-goto-kb)
+	   "*** TODO %?\nSCHEDULED: %^t")
   	  ("a" "avicenna" entry
   	   (file+function "~/org/status.org" org-task-goto-avicenna)
 	   "**** TODO [[https://reifyhealth.atlassian.net/browse/%^{Project}][%\\1]]: %?\nSCHEDULED: %^t")
@@ -381,17 +511,17 @@
 	 "/Users/andrewparisi/Documents/java/jars/plantuml.jar")
 	nrepl-sync-request-timeout nil)
 
-	(org-babel-do-load-languages
-	 'org-babel-load-languages
-	 '((python . t)
-	   (clojure . t)
-	   (haskell . t)
-	   (emacs-lisp . t)
-	   (sql . t)
-	   (dot . t)
-	   (plantuml . t)
-	   (shell . t)))
-	)
+  (org-babel-do-load-languages
+   'org-babel-load-languages
+   '((python . t)
+     (R . t)
+     (clojure . t)
+     (haskell . t)
+     (emacs-lisp . t)
+     (sql . t)
+     (dot . t)
+     (plantuml . t)
+     (shell . t))))
 
 (module! org-agenda
   :requires evil
@@ -430,68 +560,33 @@
   :init
   (add-hook 'org-agenda-finalize-hook 'org-timeline-insert-timeline :append))
 
-(module! org-roam
+(use-package org-roam
   :ensure t
-  :defer t
+  :custom
+  (org-roam-directory "~/notes")
   :init
-  (org-roam-db-autosync-mode)
-  (defvar *org-roam-db-cycled?* nil)
-
-  (defun org-roam-cycle-db ()
-    (interactive)
-    (org-roam-db-clear-all)
-    (org-roam-db-sync))
-
-  (defun org-roam-link-current-file ()
-    (interactive)
-    (save-excursion
-      (goto-char (point-min))
-      (org-set-property
-       "ID" (format-time-string "%Y%m%dT%H%M%SZ" (current-time) t)))
-    (let* ((filepath (buffer-file-name))
-	   (file-name (file-name-nondirectory filepath)))
-      (shell-command-to-string
-       (format
-	"ln -s %s /Users/andrewparisi/Documents/notes/roam/%s"
-	filepath file-name)))
-    (org-roam-cycle-db))
-
-  (defun org-roam-find-note ()
-    (interactive)
-    (unless *org-roam-db-cycled?*
-      (org-roam-cycle-db)
-      (setq *org-roam-db-cycled?* t))
-    (org-roam-node-find))
-
-  :config
-
-;;  (org-roam-setup)
-  (setq org-roam-v2-ack t)
-
-  (setq org-roam-directory (file-truename "~/Documents/notes/roam")
-	find-file-visit-truename t
-	org-roam-node-display-template "${title} ${tags}")
-
   (major-mode-map org-mode
     :labels
     ("r"  "roam"
      "rt" "roam tag")
     :bindings
-    ("rf" 'org-roam-find-note
-     "rl" 'org-roam-node-insert
+    ("rf"  'org-roam-node-find
+     "rl"  'org-roam-node-insert
      "rta" 'org-roam-tag-add
      "rtr" 'org-roam-tag-remove
      "rb"  'org-roam-buffer-toggle
-     "ri"  'org-roam-link-current-file)
-    (setq org-roam-capture-templates
-	  '(("d" "default" plain "%?"
-	     :if-new
-	     (file+head "${slug}.org"
-                        "#+title: ${title}\n#+date: %u\n#+lastmod: \n\n")
-	     :immediate-finish t))
-          time-stamp-start "#\\+lastmod: [\t]*")))
+     "ri"  'org-roam-link-current-file))
 
-
+  (setq
+   org-roam-capture-templates
+   '(("d" "default" plain "%?"
+      :if-new
+      (file+head "${slug}.org"
+                 "#+title: ${title}\n#+date: %u\n#+lastmod: \n\n")
+      :immediate-finish t))
+   time-stamp-start "#\\+lastmod: [\t]*")
+  :config
+  (org-roam-setup))
 
 ;;;;;;;
 ;;; LSP
@@ -504,9 +599,11 @@
   (setq lsp-enable-indentation nil
 	lsp-enable-completion-at-point nil
 	lsp-lens-enable t
+	lsp-completion-enable t
 	lsp-signature-auto-activate nil)
 
   ;; TODO: Add these to the :hook section
+  (add-hook 'lsp-mode #'lsp-enable-which-key-integration)
 
   ;; clojure
   (add-hook 'clojure-mode-hook #'lsp)
@@ -514,7 +611,7 @@
   (add-hook 'clojurescript-mode-hook #'lsp)
 
   ;; R
-  (add-hook 'ess-r-mode-hook #'lsp)
+  ;; (add-hook 'ess-r-mode-hook #'lsp)
 
   ;;yaml
   (add-hook 'yaml-mode-hook #'lsp)
@@ -584,7 +681,6 @@
 
 (module! company
   :ensure t
-  :defer t
   :requires evil)
 
             ;;;
@@ -640,21 +736,31 @@
   :config
   (setq blacken-line-length '79))
 
-(module! conda
+
+(module! pyvenv
   :ensure t
   :defer t
-  :requires evil
   :init
-  (conda-env-initialize-eshell)
+  (setenv "CONDA_PREFIX" "/Users/andrewparisi/anaconda3")
+  (setenv "WORKON_HOME" (concat (getenv "CONDA_PREFIX") "/envs"))
   :config
-  (defun conda-env-switch ()
-    (interactive)
-    (conda-env-deactivate)
-    (conda-env-activate))
+  (pyvenv-mode t)
 
-  (setq
-   conda-anaconda-home "/Users/andrewparisi/anaconda3"
-   conda-env-home-directory "/Users/andrewparisi/anaconda3"))
+  ;; Set correct Python interpreter
+;;  (setq pyvenv-post-activate-hooks
+;;        (list (lambda ()
+;;                (setq python-shell-interpreter (concat pyvenv-virtual-env "bin/python3")))))
+;;  (setq pyvenv-post-deactivate-hooks
+;;        (list (lambda ()
+;;                (setq python-shell-interpreter "python3"))))
+
+
+  )
+
+
+(module! ein
+  :defer t
+  :ensure t)
 
                  ;;;
 ;;;;;;;;;;;;;;;;;;;;
@@ -665,10 +771,17 @@
 (module! emacs
   :use-package nil
   (major-mode-map emacs-lisp-mode
+    :labels
+    ("e" "eval")
     :bindings
-    ("g" 'xref-find-definitions
-     "." 'xref-prompt-find-definitions
-     "," 'xref-pop-marker-stack)))
+    ("ed" 'eval-defun
+     "ee" 'eval-last-sexp
+     "ep" 'pp-eval-last-sexp
+     "g"  'xref-find-definitions
+     "."  'xref-prompt-find-definitions
+     ","  'xref-pop-marker-stack
+     "t"  'trace-function
+     "u"  'untrace-function)))
 
 
 ;;;;;;;;;;;
@@ -680,12 +793,15 @@
   :mode ("\\.clj\\'" . clojure-mode)
   :requires evil
   :init
+  (setq tab-always-indent 'complete)
+  (add-hook 'cider-repl-mode-hook #'company-mode)
+  (add-hook 'cider-mode-hook #'company-mode)
   ;; If necessary, add more calls to `define-key' here ...
   :config
-  (setq cider-repl-pop-to-buffer-on-connect nil
-	cider-test-show-report-on-success t
-	cider-repl-display-help-banner nil
-	cider-show-error-buffer nil))
+    (setq cider-repl-pop-to-buffer-on-connect nil
+	  cider-test-show-report-on-success t
+	  cider-repl-display-help-banner nil
+	  cider-show-error-buffer nil))
 
 (module! clojure-mode
   :ensure t
@@ -712,29 +828,31 @@
       ("" "major mode")))
 
   (defun xref-prompt-find-definitions ()
-  (interactive)
-  (let* ((backend (xref-find-backend))
-         (completion-ignore-case
-          (xref-backend-identifier-completion-ignore-case backend))
-	 (id
-          (completing-read
-	   "Find Definitions: "
-	   (xref-backend-identifier-completion-table backend)
-           nil nil nil
-           'xref--read-identifier-history)))
-    (if (equal id "")
-        (user-error "There is no default identifier")
-      (xref--find-definitions id nil))))
+    (interactive)
+    (let* ((backend (xref-find-backend))
+           (completion-ignore-case
+            (xref-backend-identifier-completion-ignore-case backend))
+	   (id
+            (completing-read
+	     "Find Definitions: "
+	     (xref-backend-identifier-completion-table backend)
+             nil nil nil
+             'xref--read-identifier-history)))
+      (if (equal id "")
+          (user-error "There is no default identifier")
+	(xref--find-definitions id nil))))
 
   (major-mode-map clojure-mode
     :bindings
     ("jj" 'my-cider-jack-in
      "jc" 'my-cider-connect
      "jq" 'cider-quit
+     "el" 'cider-load-buffer
+     "ee" 'cider-eval-defun-at-point
+     "ec" 'cider-eval-defun-to-comment
+     "ep" 'cider-pprint-eval-defun-at-point
      "fd" 'cider-format-defun
      "fb" 'cider-format-buffer
-     "ld" 'cider-eval-defun-at-point
-     "lb" 'cider-load-buffer
      "q"  'cider-quit
      "s"  'cider-toggle-trace-var
      "n"  'cider-repl-set-ns
@@ -742,10 +860,11 @@
      "."  'xref-find-definitions
      ","  'xref-pop-marker-stack
      "c"  'cider-eval-defun-at-point
-     "r"  'lsp-find-references
+     "r"  'xref-find-references
      "d"  'lsp-describe-thing-at-point
-     "tt" 'cider-test-run-project-tests
      "tn" 'cider-test-run-ns-tests
+     "tp" 'cider-test-run-project-tests
+     "tt" 'cider-test-run-test
      "a"  'lsp-execute-code-action)
     :labels
     (""  "major mode"
@@ -755,7 +874,7 @@
      "j"  "repl"))
   :config
   (setq lsp-clojure-server-command '("clojure-lsp")
-	org-babel-clojure-backend 'cider))
+	    org-babel-clojure-backend 'cider))
 
            ;;;
 ;;;;;;;;;;;;;;
@@ -778,21 +897,12 @@
 ;;;;;
 ;;; R
 
-(module! ess
-  :ensure t
-  :defer t
-  :init
-  (require 'ess-site)
-  (add-hook
-   'inferior-ess-r-mode-hook
-   (lambda ()
-     (progn
-       (evil-define-key 'normal 'evil-normal-state-map (kbd "C-j") 'comint-next-input)
-       (evil-define-key 'insert 'evil-insert-state-map (kbd "C-j") 'comint-next-input)
-       (evil-define-key 'normal 'evil-normal-state-map (kbd "C-k") 'comint-previous-input)
-       (evil-define-key 'insert 'evil-insert-state-map (kbd "C-k") 'comint-previous-input))))
-  :config
-  (setq ess-r-backend 'lsp))
+ (module! ess
+   ;; This doesn't really work in a terminal
+   :ensure t
+   :defer t)
+
+
 
             ;;;
 ;;;;;;;;;;;;;;;
@@ -802,7 +912,7 @@
 ;;; mail
 
 (module! mu4e
-  :load-path "/usr/local/share/emacs/site-lisp/mu/mu4e/"
+  :load-path "/usr/local/share/emacs/site-lisp/mu@1.6.6/mu4e/"
   :config
   (setq mu4e-mu-binary (executable-find "mu")
 	mu4e-maildir "~/.maildir"
@@ -872,6 +982,18 @@
 (module! sql
   :defer t
   :init
+
+  (defun sql-add-newline-first (output)
+    "Add newline to beginning of OUTPUT for `comint-preoutput-filter-functions'"
+    (if (equal major-mode 'sql-interactive-mode)
+	(concat "\n" output)
+      output))
+
+  (defun sqli-add-hooks ()
+    "Add hooks to `sql-interactive-mode-hook'."
+    (add-hook 'comint-preoutput-filter-functions
+              'sql-add-newline-first))
+
   (defun sql-get-password (key account)
     (let ((command (concat  "security "
 			    "find-generic-password "
@@ -881,6 +1003,8 @@
 			    account
 			    "' -w")))
       (->> command shell-command-to-string split-string car)))
+
+
 
   (setq sql-postgres-login-params nil
 	sql-connection-alist
@@ -897,7 +1021,7 @@
 	     "@concept-data-production.cxyq5v2k4dfd.us-east-1.rds.amazonaws.com"
 	     ":5432"
 	     "/concept_data")))
-          (psql-prod-dev
+          (psql-prod-development
 	   (sql-product 'postgres)
 	   (sql-database
 	    (concat
@@ -910,7 +1034,7 @@
 	     "@concept-data-production.cxyq5v2k4dfd.us-east-1.rds.amazonaws.com"
 	     ":5432"
 	     "/development")))
-          (psql-dev-cd
+          (psql-testing-concept-data
 	   (sql-product 'postgres)
 	   (sql-database
 	    (concat
@@ -948,25 +1072,12 @@
 	     "@localhost"
 	     ":5439"
 	     "/development")))))
+  (add-hook 'sql-interactive-mode-hook 'sqli-add-hooks)
   (add-hook 'sql-interactive-mode-hook
-            (lambda ()
-              (toggle-truncate-lines t)))
-
-
-  (defun sql-add-newline-first (output)
-    "Add newline to beginning of OUTPUT for `comint-preoutput-filter-functions'"
-    (concat "\n" output))
+	    (lambda () (toggle-truncate-lines t)))
 
   (evil-define-key 'insert sql-mode-map (kbd "C-c p") 'autocomplete-table)
-  (evil-define-key 'normal sql-mode-map (kbd "C-c p") 'autocomplete-table)
-
-  ;;(defun sqli-add-hooks ()
-  ;;  "Add hooks to `sql-interactive-mode-hook'."
-  ;;  (add-hook 'comint-preoutput-filter-functions
-  ;;            'sql-add-newline-first))
-
-  ;;(add-hook 'sql-interactive-mode-hook 'sqli-add-hooks)
-  )
+  (evil-define-key 'normal sql-mode-map (kbd "C-c p") 'autocomplete-table))
 
 
 (module! restclient
@@ -998,7 +1109,31 @@
 		   (window-start)
 		   (window-end)))))))
 
+(module! terraform-mode
+  :ensure t
+  :defer t
+  :config
+  (major-mode-map terraform-mode
+    (:bindings
+     "f" 'terraform-format-buffer))
+  )
 
+
+
+       ;;;
+;;;;;;;;;;
+
+;;; Docker
+
+(module! docker
+  :ensure t
+  :defer t)
+
+(module! dockerfile-mode
+  :ensure t
+  :defer t
+  :init
+  (add-to-list 'auto-mode-alist '("Dockerfile\\'" . dockerfile-mode)))
 
        ;;;
 ;;;;;;;;;;
@@ -1009,6 +1144,11 @@
 (module! yaml-mode
   :defer t
   :ensure t)
+
+(module! crdt
+  :defer t
+  :ensure t)
+
 
 ;;;;;;;;;;;;;
 ;;; Semantics
@@ -1023,3 +1163,12 @@
 
 ;;;
 ;;;;;;;;;;;;;;
+
+(module! poetry
+  :ensure t
+  :defer t
+  :init
+  (add-to-list 'exec-path "/Users/andrewparisi/.poetry/bin"))
+
+;;;;;;;;;;
+;; Scratch

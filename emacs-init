@@ -16,7 +16,7 @@
 	(format "done loading %s: %s"
 		,load-string (- (float-time) ,start))))))
 
-(setq user-mail-address  "")
+(setq user-mail-address  "andrew.parisi@reifyhealth.com")
 
 (load! "~/.emacs.d/display.el")
 (load! "~/.emacs.d/modules.el")
@@ -29,6 +29,7 @@
 (load! "~/emacs-files/diary-helpers.el")
 (load! "~/emacs-files/sql-session.el")
 (load! "~/emacs-files/jira.el")
+(load! "~/emacs-files/interviews.el")
 
 ;; Custom Theme
 (colors!
@@ -45,6 +46,7 @@
   :transparency          ('alpha 90 90)
   :mode-line             (:foreground "#3b3b3f" :background "#d0d0d0")
   :mode-line-inactive    (:foreground "#3b3b3f" :background "#d0d0d0")
+  :prettify-symbols      t
   :fringe                (:background "#d0d0d0"))
 
 (mode-line!
@@ -56,9 +58,18 @@
   (:text " %m: ")
   (:text "%b ")
   (:condition
+   pyvenv-virtual-env-name
+   :text (format " |conda: %s" pyvenv-virtual-env-name)
+   :color "#30648e")
+  (:condition
+   (not (equal envrc--status 'none))
+   :text (format " |envrc %s" envrc--status)
+   :color "#30648e")
+  (:condition
    (vc-backend buffer-file-name)
    :text (format " |%s " vc-mode)
    :color "#30648e"))
+
 
 ;; Custom Bindings
 
@@ -90,15 +101,6 @@
   (interactive)
   (find-file "~/.emacs.d/keyboard.el"))
 
-(defun ivy-push-view-default-name ()
-  (let* ((view (ivy--get-view-config))
-         (view-name "{} organizer"))
-    (when view-name
-      (let ((x (assoc view-name ivy-views)))
-        (if x
-            (setcdr x (list view))
-          (push (list view-name view) ivy-views))))))
-
 (defun to-workspace-1 ()
   (interactive)
   (workspace-to-workspace-number 1))
@@ -123,13 +125,58 @@
   (interactive)
   (workspace-to-workspace-number 6))
 
+
+(defun restore-organizer ()
+  (interactive)
+  (restore-organizer-internal t))
+
+(defun restore-organizer-layout ()
+  (interactive)
+  (restore-organizer-internal nil))
+
+(defun restore-organizer-internal (refresh?)
+  (org-agenda-list 1)
+  (when refresh?
+    (refresh-calendar-items))
+  (let ((agenda-buffer (current-buffer)))
+    (delete-other-windows)
+    (switch-to-buffer agenda-buffer)
+    (when refresh?
+      (org-agenda-redo))
+    (split-window-below)
+    (task-log)))
+
+(defun save-all-buffers ()
+  (interactive)
+  (save-some-buffers t))
+
+(defun save-all-buffers-kill-no-prompt ()
+  (interactive)
+  (save-buffers-kill-emacs t))
+
+(defun email ()
+  (interactive)
+  (delete-other-windows)
+  (mu4e))
+
 (which-key-map evil-normal-state-map ","
   :labels
   ( "g"  "git"
-    "gr" "code review"
+    "gr" "github review"
     "i"  "init"
-    "p"  "projectile"
+    "n"  "notes"
+    "o"  "organizer"
+    "oe" "edit-task"
+    "om" "organizer message"
+    "oi" "organizer interview"
     "s"  "s-expression"
+    "t"  "tools"
+    "tc" "conda"
+    "ti" "lsp-ui-imenu"
+    "tj" "jira"
+    "ts" "sql"
+    "tt" "pomodoro"
+    "v"  "ivy-view"
     "w"  "workspaces"
     )
   :default-bindings
@@ -137,8 +184,10 @@
    "bi" 'ibuffer
    "bb" 'workspace-switch-buffer
    "bm" 'messages-buffer
-   "bs" 'scratch-buffer
-   "bw" 'save-buffer
+   "bs" 'save-buffer
+   "bt" 'scratch-buffer
+   "ba" 'save-all-buffers
+   "bq" 'save-all-buffers-kill-no-prompt
    ;; org
    "c"   'org-capture
    ;; magit
@@ -146,7 +195,7 @@
    "gc"  'magit-branch-checkout
    "gb"  'magit-blame
    "gl"  'magit-log-current
-   "gr" 'code-review-start
+   "grs" 'code-review-start
    "gh"  'git-timemachine
    ;; init
    "ii"  'init-file
@@ -154,25 +203,61 @@
    "ic"  'core-file
    "id"  'display-file
    "ik"  'keyboard-file
-   ;; projectile
-   "p"   'projectile-command-map
+   ;; Roam Notes
+   "nf"  'org-roam-node-find
+   "nc"  'org-roam-cycle-db
+   ;; organizer
+   "ol"  'task-log
+   "ot"  'log-task
+   "of"  'task-log-for-date
+   "og"  'get-tasks-in-range
+   "or"  'refresh-agenda
+   "oa"  'add-calendar-item-for-today
+   "os"  'restore-organizer-layout
+   "oed" 'edit-task-description-at-point
+   "oes" 'edit-task-start-time-at-point
+   "oee" 'edit-task-end-time-at-point
+   "oex" 'delete-task-at-point
+   "oeg" 'edit-task-group-at-point
+   "oms" 'timesheet-daily-slack-message
+   "omq" 'timesheet-daily-slack-message-quit
+   "ois" 'start-interview
    ;; s-expressions
    "sq"  'indent-pp-sexp
    "sl"  'forward-sexp
    "sh"  'backward-sexp
    "st"  'transpose-sexps
-   "sf"  'move-sexp-forward
-   "sb"  'move-sexp-back
    ;; tools
+   "tb"  'project-browse-website
+   "tca" 'pyvenv-workon
+   "tcd" 'pyvenv-deactivate
    "te"  'eshell
+   "tjl" 'jira-my-issues-window
+   "tjm" 'jira-move-issue
+   "tjv" 'jira-ticket-summary-window
+   "tjr" 'jira-tickets-to-review
+   "tm"  'email
    "tp"  'project-switch-project
+   "td"  'project-quit-project
+   "tsl" 'sql-session-reset-window-layout
+   "tsq" 'sql-session-quit-session
+   "tss" 'sql-session-start-session
+   "tst" 'sql-session-toggle-tables-buffer
+   "tsw" 'sql-session-save-session
+   "tts" 'pomodoro-start-work
+   "ttr" 'pomodoro-start-rest
+   "ttp" 'pomodoro
+   ;; Not working "ttx" 'pomodoro-stop-timer
+   ;; workspaces
    "w1"  'to-workspace-1
    "w2"  'to-workspace-2
    "w3"  'to-workspace-3
    "w4"  'to-workspace-4
    "w5"  'to-workspace-5
    "w6"  'to-workspace-6
+   "wr"  'ivy-push-view
    "wd"  'workspace-pop
+   "wj"  'ivy-switch-view
    ;; generic
    "x"  'counsel-M-x))
 
@@ -182,50 +267,62 @@
 (defproject avicenna
   :project-dir "~/Documents/projects/avicenna"
   :website
-  "https://github.com/reifyhealth/concept-data/tree/develop/avicenna"
-  :init (my-cider-connect))
+  "https://github.com/reifyhealth/avicenna"
+  :init (my-cider-connect)
+  ;; write a more sophisticated function for when there are multiple repls
+  :stop (cider-quit))
 
-(defproject ri-match
-  :project-dir "~/Documents/projects/concept-data/ri-match"
-  :website "https://github.com/reifyhealth/concept-data/tree/develop/ri-match"
-  :init (my-cider-connect))
+(defproject annotation-service
+  :project-dir "~/Documents/projects/dps-annotation-service"
+  :website     "https://github.com/reifyhealth/dps-annotation-service"
+  :conda-env   "annotate"
+  :stop       (pyvenv-deactivate)
+  )
 
-(defproject data-drawings
-  :project-dir "~/Documents/projects/data-diagrams"
-  :website "https://github.com/reifyhealth/data-diagrams"
-  :init
-  (find-file
-   "~/Documents/projects/data-diagrams/architecture_data_inference.org"))
+(defproject concept-data
+  :project-dir "~/Documents/projects/concept-data"
+  :website     "https://github.com/reifyhealth/concept-data")
+
+(defproject documents
+  :project-dir "~/Documents/projects/documents")
 
 (defproject data-warehouse
   :project-dir "~/Documents/projects/data-warehouse"
   :website "https://github.com/reifyhealth/data-diagrams")
 
-(defproject emacs
-  :project-dir "~/.emacs.d")
+(defproject knowledge-base
+  :project-dir "~/Documents/projects/data-daze-spring-2022/knowledge-base"
+  :website "http://github.com/reifyhealth/data-date-spring-2022"
+  :init (my-cider-connect)
+  :stop (cider-quit))
+
+(defproject organizer
+  :project-dir "/Users/andrewparisi/org/"
+  :init (restore-organizer))
 
 (defproject pyreify
-  :project-dir "~/scratch/project-scratch/concept-data"
-  :website   "https://github.com/reifyhealth/concept-data/"
-  :conda-env "pyreify")
+  :project-dir "~/Documents/projects/pyreify_nlp"
+  :website   "https://github.com/reifyhealth/pyreify_nlp/"
+  :conda-env "pyreify"
+  :stop (pyvenv-deactivate)
+  )
 
-(defproject retool
-  :project-dir "~/Documents/projects/retool-admin"
-  :website   "https://github.com/reifyhealth/retool-admin/")
+(defproject search-service
+  :project-dir "~/Documents/projects/dps-search-service"
+  :website     "http://github.com/reifyhealth/dps-search-service")
 
-(defproject sql
-   :init (sql-session-start-session))
+;; This didn't work for some reason
+ (defproject sql
+   :init (sql-session-start-session)
+   :stop (sql-session-quit-session))
 
 (defproject zem
   :project-dir "~/Documents/projects/prefect-enrollment-prediction"
   :website
   "https://github.com/reifyhealth/prefect-enrollment-prediction"
-  :conda-env   "prefect-zem")
-
-(defproject knowledge-base
-  :project-dir "~/Documents/projects/data-daze-spring-2022/knowledge-base"
-  :website "http://github.com/reifyhealth/data-date-spring-2022"
-  :init (my-cider-connect))
+  :conda-env   "prefect-zem"
+  :stop (pyvenv-deactivate)
+  )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Scratch and Miscellany
@@ -242,10 +339,22 @@
 (evil-define-key 'normal 'evil-normal-state-map (kbd "C-c l") 'comint-clear-buffer)
 
 ;; Hacks!
-(add-to-list 'exec-path "/usr/local/bin")
-(setenv "PATH" (mapconcat 'identity exec-path ":"))
 (put 'dired-find-alternate-file 'disabled nil)
 
 
 (setq *end* (float-time))
 (eirene-splash (- *end* *start*))
+
+(custom-set-variables
+ ;; custom-set-variables was added by Custom.
+ ;; If you edit it by hand, you could mess it up, so be careful.
+ ;; Your init file should contain only one such instance.
+ ;; If there is more than one, they won't work right.
+ '(package-selected-packages
+   '(ein terraform-mode pbcopy yaml-mode which-key use-package undo-tree ttl-mode sqlformat sphinx-doc sparql-mode restclient quelpa org-timeline org-roam lsp-ui ivy-rich haskell-mode git-timemachine flycheck evil-collection envrc csv-mode counsel cider blacken ag)))
+(custom-set-faces
+ ;; custom-set-faces was added by Custom.
+ ;; If you edit it by hand, you could mess it up, so be careful.
+ ;; Your init file should contain only one such instance.
+ ;; If there is more than one, they won't work right.
+ )
